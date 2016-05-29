@@ -344,12 +344,18 @@ func (d *decoder) prepare(n *node, out reflect.Value) (newout reflect.Value, unm
 
 		// Is the value an addressable value?
 		if out.CanAddr() {
+			if in, ok := out.Addr().Interface().(Initiator); ok {
+				if err := in.BeforeUnmarshalYAML(); err != nil {
+					fail(err)
+				}
+			}
+
 			// Is the value an Unmarshaler?
 			if u, ok := out.Addr().Interface().(Unmarshaler); ok {
 				// Call the Unmarshaler, allow custom unmarshalling
 				good = d.callUnmarshaler(n, u)
 
-				// Value is now nmarshalled (or, attempt failed)
+				// Value is now unmarshalled (or, attempt failed)
 				return out, true, good
 			}
 		}

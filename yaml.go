@@ -61,6 +61,11 @@ type Unmarshaler interface {
 	UnmarshalYAML(unmarshal func(interface{}) error) error
 }
 
+// UnmarshalerTag priority is higher than Unmarshaler
+type UnmarshalerTag interface {
+	UnmarshalYAMLTag(unmarshal func(v interface{}) error, tag string) error
+}
+
 // The Initiator interface my be implemented by types to do things directly
 // after the creation of itself by the Decoder. It could be used to
 // set customize the instances before the unmarshaler process of the object.

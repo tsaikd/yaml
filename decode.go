@@ -308,6 +308,51 @@ func (d *decoder) callUnmarshaler(n *node, u Unmarshaler) (good bool) {
 	return true
 }
 
+// Use the Unmarshaler.UnmarshalYAMLTag for types that are Unmarshalers, performing
+// custom unmarshaling.
+func (d *decoder) callUnmarshalerTag(n *node, u UnmarshalerTag) (good bool) {
+	// Get the amount of existing decoder errors
+	terrlen := len(d.terrors)
+
+	// Call the Unmarshaler, giving it a chance to handle the unmarshalling
+	// any way it wants, into v.
+	err := u.UnmarshalYAMLTag(func(v interface{}) (err error) {
+		defer handleErr(&err)
+
+		// Try and unmarshal the node into the type inputted
+		d.unmarshal(n, reflect.ValueOf(v))
+
+		// If we have new decoder errors
+		if len(d.terrors) > terrlen {
+			// Get new decoder errors
+			issues := d.terrors[terrlen:]
+
+			// Remove them from the decoder errors list
+			d.terrors = d.terrors[:terrlen]
+
+			// And return just the specific decoder errors to the calling type
+			return &TypeError{issues}
+		}
+
+		return nil
+	}, n.tag)
+
+	// Append all decoding errors received, maintaing order - allow the
+	// calling object to return the errors it received
+	if e, ok := err.(*TypeError); ok {
+		d.terrors = append(d.terrors, e.Errors...)
+		return false
+	}
+
+	// Or, if we had a different errors, fail immediately
+	if err != nil {
+		fail(err)
+	}
+
+	// Otherwise, we're good
+	return true
+}
+
 // d.prepare initializes and dereferences pointers and calls UnmarshalYAML
 // if a value is found to implement it.
 // It returns the initialized and dereferenced out value, whether
@@ -350,8 +395,15 @@ func (d *decoder) prepare(n *node, out reflect.Value) (newout reflect.Value, unm
 				}
 			}
 
-			// Is the value an Unmarshaler?
-			if u, ok := out.Addr().Interface().(Unmarshaler); ok {
+			// Is the value an Unmarshaler or UnmarshalerTag?
+			// UnmarshalerTag priority is higher than Unmarshaler
+			if u, ok := out.Addr().Interface().(UnmarshalerTag); ok {
+				// Call the Unmarshaler, allow custom unmarshalling
+				good = d.callUnmarshalerTag(n, u)
+
+				// Value is now unmarshalled (or, attempt failed)
+				return out, true, good
+			} else if u, ok := out.Addr().Interface().(Unmarshaler); ok {
 				// Call the Unmarshaler, allow custom unmarshalling
 				good = d.callUnmarshaler(n, u)
 
